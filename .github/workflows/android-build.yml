@@ -1,0 +1,127 @@
+name: Myato-Player Android CI / Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publicar release no GitHub automaticamente?'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Compilar APK e Executar Testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Permissão de execução no Gradle Wrapper
+        run: chmod +x gradlew || true
+
+      - name: Executar Testes Automatizados (Robolectric & Unit Tests)
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compilar APK de Debug
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Preparar Assinatura de Release (Se Secrets existirem)
+        id: sign_check
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "Secrets configurados! Decodificando keystore para release..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+            export KEYSTORE_PATH="$(pwd)/my-upload-key.jks"
+            gradle :app:assembleRelease --no-daemon --stacktrace
+            cp app/build/outputs/apk/release/app-release.apk Myato-Player-v2.1.apk
+            echo "has_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "Secrets de assinatura privada não configurados. Usando APK Debug seguro para distribuição..."
+            cp app/build/outputs/apk/debug/app-debug.apk Myato-Player-v2.1.apk
+            echo "has_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload do Artefato APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Myato-Player-v2.1
+          path: Myato-Player-v2.1.apk
+          retention-days: 30
+
+      - name: Publicar Release no GitHub
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true')
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v2.1.0
+          name: "Myato-Player v2.1"
+          draft: false
+          prerelease: false
+          files: Myato-Player-v2.1.apk
+          body: |
+            # 🎵 Myato-Player v2.1 — Lançamento Oficial
+
+            O **Myato-Player 2.1** é uma recriação nativa avançada para Android inspirada nos recursos de excelência do Musicolet, com identidade visual moderna preta e verde neon.
+
+            ---
+
+            ### 📦 Download Direto do APK
+            👉 **[Clique aqui para baixar o Myato-Player-v2.1.apk](https://github.com/myatodevolper-lab/Myato-Player/releases/download/v2.1.0/Myato-Player-v2.1.apk)**
+
+            ---
+
+            ### ✨ Novidades da Versão 2.1 (Inspiradas no Musicolet)
+            1. **Até 20 Filas de Reprodução Independentes**: Alterne entre filas sem perder posição, tempo de reprodução ou configurações de shuffle/repetição. Renomeie, duplique ou salve filas diretamente como playlists.
+            2. **Editor Avançado de Tags ID3**: Edição individual e em lote (Artista, Álbum, Gênero, Ano, Número da Faixa, Disco, Compositor, Comentários e Letras).
+            3. **Letras Sincronizadas (.LRC)**: Visualização em tempo real linha a linha com rolagem automática, busca por toque no verso, carimbo de tempo em tempo real e exportação.
+            4. **Modo Repetição A-B**: Marque o ponto A e ponto B para praticar solos, aprender letras ou estudar trechos repetidamente.
+            5. **Marcadores & Anotações**: Salve múltiplos marcadores com tempo e notas textuais por música.
+            6. **Equalizador por Dispositivo**: Perfis dedicados com troca automática para Alto-falante, Fone de Ouvido com fio, Bluetooth e USB DAC, além de controle de balanço de canal (Esquerda/Direita).
+            7. **Velocidade & Tom**: Altere a velocidade de 0.25x a 3.0x e o tom de 0.5x a 2.0x sem distorção.
+            8. **Estatísticas Musicais & Exportação CSV**: Relatórios de Hoje, 7 dias, 30 dias, Mês, Ano e Geral com tempo total escutado, artistas e faixas mais reproduzidas.
+            9. **Navegação por Pastas**: Modos Linear e Hierárquico de diretórios.
+            10. **Timer de Sono Inteligente**: Contagem regressiva de minutos, parada após término da música atual e fade-out suave de volume.
+            11. **Widget de Tela Inicial**: Controles rápidos de mídia na tela inicial do celular.
+            12. **Backup & Restauração Completo**: Exportação e importação de dados em JSON.
+
+            ---
+
+            ### 📱 Compatibilidade & Requisitos
+            - **Android Mínimo**: Android 7.0 (Nougat - API 24)
+            - **Android Alvo / Testado**: Android 14 / 15 / 16 (API 34-36)
+            - **Arquitetura**: Universal (ARMv7, ARM64, x86, x86_64)
+
+            ---
+
+            ### 🔧 Instruções de Instalação
+            1. Baixe o arquivo `Myato-Player-v2.1.apk` no seu celular Android.
+            2. Toque na notificação de download ou abra o arquivo pelo gerenciador de arquivos.
+            3. Se solicitado, permita a instalação de apps de fontes desconhecidas para o navegador/gerenciador.
+            4. Conclua a instalação e abra o Myato-Player!
