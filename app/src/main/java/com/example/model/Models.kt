@@ -57,7 +57,9 @@ data class Playlist(
     val createdAt: Long = System.currentTimeMillis(),
     val songCount: Int = 0,
     val isSmart: Boolean = false,
-    val smartFilterType: String? = null
+    val smartFilterType: String? = null,
+    val isExternal: Boolean = false,
+    val sourcePath: String? = null
 )
 
 enum class DownloadStatus {
@@ -86,10 +88,10 @@ data class DownloadItem(
 )
 
 enum class AudioOutputDevice(val label: String) {
-    SPEAKER("Alto-falante"),
+    SPEAKER("Alto-falante do Celular"),
     WIRED_HEADSET("Fone de Ouvido com Fio"),
-    BLUETOOTH("Bluetooth"),
-    USB("USB / Outros")
+    BLUETOOTH("Fone / Dispositivo Bluetooth"),
+    USB("Áudio USB / DAC")
 }
 
 data class EqualizerConfig(
@@ -97,14 +99,16 @@ data class EqualizerConfig(
     val presetName: String = "Normal",
     val bassBoost: Int = 0, // 0 to 1000
     val virtualizer: Int = 0, // 0 to 1000
-    val bandLevels: Map<Int, Int> = emptyMap(), // bandIndex to millibels (-1200 to +1200)
-    val channelBalance: Float = 0f // -1.0 (left) to 1.0 (right)
+    val bandLevels: Map<Int, Int> = emptyMap(), // bandIndex 0..9 to millibels (-1200 to +1200)
+    val channelBalance: Float = 0f, // -1.0 (left) to 1.0 (right)
+    val customPresets: Map<String, Map<Int, Int>> = emptyMap()
 )
 
 data class SleepTimerConfig(
     val isRunning: Boolean = false,
     val remainingSeconds: Long = 0L,
     val stopAfterCurrentTrack: Boolean = false,
+    val stopAfterNextTrack: Boolean = false,
     val stopAfterTracksCount: Int = 0, // 0 = time based, >0 = count down tracks
     val fadeOutVolume: Boolean = true
 )
@@ -115,7 +119,8 @@ enum class SortOrder(val label: String) {
     ARTIST_ASC("Artista (A-Z)"),
     ALBUM_ASC("Álbum (A-Z)"),
     DURATION_DESC("Duração (Maior)"),
-    DATE_ADDED_DESC("Data de adição (Recente)")
+    DATE_ADDED_DESC("Data de adição (Recente)"),
+    PLAY_COUNT_DESC("Mais Tocadas")
 }
 
 enum class RepeatMode {

@@ -718,43 +718,92 @@ class PlayerController private constructor(private val context: Context) {
         applyEqualizerToEffects(_equalizerConfig.value)
     }
 
+    fun selectDeviceProfile(device: AudioOutputDevice) {
+        _currentDevice.value = device
+        applyDeviceProfile(device)
+    }
+
     fun applyPreset(presetName: String) {
         val bands = when (presetName) {
-            "Rock" -> mapOf(0 to 450, 1 to 250, 2 to -100, 3 to 200, 4 to 500)
-            "Pop" -> mapOf(0 to -150, 1 to 150, 2 to 400, 3 to 100, 4 to -100)
-            "Clássico" -> mapOf(0 to 350, 1 to 200, 2 to -150, 3 to 250, 4 to 350)
-            "Jazz" -> mapOf(0 to 200, 1 to 100, 2 to -100, 3 to 150, 4 to 300)
-            "Voz" -> mapOf(0 to -250, 1 to 150, 2 to 450, 3 to 200, 4 to -200)
-            "Grave Reforçado" -> mapOf(0 to 600, 1 to 400, 2 to 100, 3 to -100, 4 to -200)
-            "Agudos" -> mapOf(0 to -250, 1 to -100, 2 to 100, 3 to 400, 4 to 650)
-            else -> mapOf(0 to 0, 1 to 0, 2 to 0, 3 to 0, 4 to 0) // Normal/Padrão
+            "Bass Boost" -> mapOf(0 to 600, 1 to 500, 2 to 350, 3 to 150, 4 to 0, 5 to 0, 6 to 0, 7 to 0, 8 to 0, 9 to 0)
+            "Reduced Bass" -> mapOf(0 to -600, 1 to -500, 2 to -350, 3 to -150, 4 to 0, 5 to 0, 6 to 0, 7 to 0, 8 to 0, 9 to 0)
+            "Rock" -> mapOf(0 to 500, 1 to 350, 2 to 200, 3 to 50, 4 to -100, 5 to 50, 6 to 200, 7 to 350, 8 to 450, 9 to 500)
+            "Pop" -> mapOf(0 to -150, 1 to 50, 2 to 250, 3 to 400, 4 to 350, 5 to 200, 6 to 50, 7 to -50, 8 to -100, 9 to -150)
+            "Clássico" -> mapOf(0 to 400, 1 to 300, 2 to 200, 3 to 100, 4 to -50, 5 to -50, 6 to 100, 7 to 200, 8 to 300, 9 to 400)
+            "Jazz" -> mapOf(0 to 250, 1 to 200, 2 to 150, 3 to 50, 4 to -100, 5 to 50, 6 to 150, 7 to 250, 8 to 300, 9 to 350)
+            "Eletrônica" -> mapOf(0 to 600, 1 to 450, 2 to 200, 3 to 0, 4 to -150, 5 to 100, 6 to 250, 7 to 400, 8 to 550, 9 to 600)
+            "Hip-Hop" -> mapOf(0 to 650, 1 to 500, 2 to 300, 3 to 100, 4 to -50, 5 to 0, 6 to 100, 7 to 200, 8 to 300, 9 to 400)
+            "Vocal" -> mapOf(0 to -300, 1 to -150, 2 to 100, 3 to 300, 4 to 450, 5 to 400, 6 to 250, 7 to 100, 8 to -50, 9 to -150)
+            else -> {
+                // Check if custom preset
+                _equalizerConfig.value.customPresets[presetName]
+                    ?: mapOf(0 to 0, 1 to 0, 2 to 0, 3 to 0, 4 to 0, 5 to 0, 6 to 0, 7 to 0, 8 to 0, 9 to 0)
+            }
         }
-        val bass = if (presetName == "Grave Reforçado") 750 else if (presetName == "Rock") 400 else 200
-        val virt = if (presetName == "Rock" || presetName == "Jazz") 350 else 150
+        val bass = when (presetName) {
+            "Bass Boost" -> 750
+            "Hip-Hop" -> 600
+            "Eletrônica" -> 550
+            "Rock" -> 400
+            "Reduced Bass" -> 0
+            else -> 200
+        }
+        val virt = when (presetName) {
+            "Eletrônica", "Rock" -> 400
+            "Jazz", "Clássico" -> 300
+            else -> 150
+        }
 
-        val newCfg = EqualizerConfig(
+        val newCfg = _equalizerConfig.value.copy(
             isEnabled = true,
             presetName = presetName,
             bassBoost = bass,
             virtualizer = virt,
-            bandLevels = bands,
-            channelBalance = _equalizerConfig.value.channelBalance
+            bandLevels = bands
         )
         _equalizerConfig.value = newCfg
         deviceProfiles[_currentDevice.value] = newCfg
         applyEqualizerToEffects(newCfg)
     }
 
-    // Advanced Sleep Timer (Section 19)
-    fun startSleepTimer(minutes: Int, stopAfterTrack: Boolean = false, tracksCount: Int = 0, fadeOut: Boolean = true) {
+    fun saveCustomPreset(presetName: String) {
+        val currentLevels = _equalizerConfig.value.bandLevels
+        val updated = _equalizerConfig.value.customPresets.toMutableMap()
+        updated[presetName] = currentLevels
+        _equalizerConfig.value = _equalizerConfig.value.copy(
+            customPresets = updated,
+            presetName = presetName
+        )
+        deviceProfiles[_currentDevice.value] = _equalizerConfig.value
+    }
+
+    fun deleteCustomPreset(presetName: String) {
+        val updated = _equalizerConfig.value.customPresets.toMutableMap()
+        updated.remove(presetName)
+        _equalizerConfig.value = _equalizerConfig.value.copy(
+            customPresets = updated,
+            presetName = if (_equalizerConfig.value.presetName == presetName) "Normal" else _equalizerConfig.value.presetName
+        )
+        deviceProfiles[_currentDevice.value] = _equalizerConfig.value
+    }
+
+    // Advanced Sleep Timer (Section 19 & Section 6)
+    fun startSleepTimer(
+        minutes: Int,
+        stopAfterTrack: Boolean = false,
+        stopAfterNextTrack: Boolean = false,
+        tracksCount: Int = 0,
+        fadeOut: Boolean = true
+    ) {
         cancelSleepTimer()
         val totalSeconds = minutes * 60L
-        tracksRemainingToStop = tracksCount
+        tracksRemainingToStop = if (stopAfterNextTrack) 2 else if (stopAfterTrack) 1 else tracksCount
         _sleepTimer.value = SleepTimerConfig(
             isRunning = true,
             remainingSeconds = totalSeconds,
             stopAfterCurrentTrack = stopAfterTrack,
-            stopAfterTracksCount = tracksCount,
+            stopAfterNextTrack = stopAfterNextTrack,
+            stopAfterTracksCount = tracksRemainingToStop,
             fadeOutVolume = fadeOut
         )
 
@@ -765,16 +814,23 @@ class PlayerController private constructor(private val context: Context) {
                     delay(1000)
                     rem--
                     _sleepTimer.value = _sleepTimer.value.copy(remainingSeconds = rem)
-                    if (rem == 10L && fadeOut) {
+                    if (rem == 30L && fadeOut) {
                         fadeOutVolumeAndStop()
                     }
                 }
-                if (!_sleepTimer.value.stopAfterCurrentTrack && tracksRemainingToStop <= 0) {
+                if (!_sleepTimer.value.stopAfterCurrentTrack && !_sleepTimer.value.stopAfterNextTrack && tracksRemainingToStop <= 0) {
                     pause()
                 }
                 cancelSleepTimer()
             }
         }
+    }
+
+    fun stopAndReleaseForExit() {
+        cancelSleepTimer()
+        exoPlayer?.stop()
+        _isPlaying.value = false
+        _currentSong.value = null
     }
 
     private fun fadeOutVolumeAndStop() {

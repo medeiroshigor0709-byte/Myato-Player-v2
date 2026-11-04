@@ -59,6 +59,9 @@ fun PlayerScreen(
     onOpenSleepTimer: () -> Unit,
     onOpenTagEditor: (Song) -> Unit,
     onShareSong: (Song) -> Unit,
+    onNavigateToSearch: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onExitApp: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -70,6 +73,9 @@ fun PlayerScreen(
     }
 
     var isAlbumArtZoomed by remember { mutableStateOf(false) }
+    var showPlayerMenu by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
 
     // Vinyl rotation animation when playing
     val infiniteTransition = rememberInfiniteTransition(label = "player_rot")
@@ -113,7 +119,7 @@ fun PlayerScreen(
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Top Bar: Dismiss down arrow, Queue Title, Tag Edit & More
+        // Top Bar: Dismiss down arrow, Queue Title, Tag Edit, Queue, & 6-Item Main Menu
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -158,6 +164,69 @@ fun PlayerScreen(
                 }
                 IconButton(onClick = onOpenQueue, modifier = Modifier.testTag("player_queue_btn")) {
                     Icon(Icons.Default.QueueMusic, contentDescription = "Fila", tint = MyatoWhite)
+                }
+
+                // Section 6: Menu Principal do Player (6 itens)
+                Box {
+                    IconButton(onClick = { showPlayerMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Mais opções", tint = MyatoWhite)
+                    }
+
+                    DropdownMenu(
+                        expanded = showPlayerMenu,
+                        onDismissRequest = { showPlayerMenu = false },
+                        modifier = Modifier.background(MyatoCard)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("1. Equalizador", color = MyatoWhite) },
+                            leadingIcon = { Icon(Icons.Default.Tune, null, tint = MyatoGreen) },
+                            onClick = {
+                                showPlayerMenu = false
+                                onOpenEqualizer()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("2. Temporizador", color = MyatoWhite) },
+                            leadingIcon = { Icon(Icons.Default.Timer, null, tint = MyatoGreen) },
+                            onClick = {
+                                showPlayerMenu = false
+                                onOpenSleepTimer()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("3. Procurar", color = MyatoWhite) },
+                            leadingIcon = { Icon(Icons.Default.Search, null, tint = MyatoGreen) },
+                            onClick = {
+                                showPlayerMenu = false
+                                onNavigateToSearch()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("4. Configurações", color = MyatoWhite) },
+                            leadingIcon = { Icon(Icons.Default.Settings, null, tint = MyatoGreen) },
+                            onClick = {
+                                showPlayerMenu = false
+                                onNavigateToSettings()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("5. Ajuda e Informações", color = MyatoWhite) },
+                            leadingIcon = { Icon(Icons.Default.Info, null, tint = MyatoGreen) },
+                            onClick = {
+                                showPlayerMenu = false
+                                showHelpDialog = true
+                            }
+                        )
+                        HorizontalDivider(color = MyatoBorder)
+                        DropdownMenuItem(
+                            text = { Text("6. Fechar Aplicativo", color = MyatoError) },
+                            leadingIcon = { Icon(Icons.Default.PowerSettingsNew, null, tint = MyatoError) },
+                            onClick = {
+                                showPlayerMenu = false
+                                showExitDialog = true
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -506,5 +575,108 @@ fun PlayerScreen(
         }
 
         Spacer(modifier = Modifier.height(30.dp))
+    }
+
+    // Help & Information Dialog (Section 6)
+    if (showHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showHelpDialog = false },
+            containerColor = MyatoCard,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = MyatoGreen)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ajuda & Informações", color = MyatoWhite, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Myato-Player v2.1 Pro", color = MyatoGreen, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Desenvolvido por Myato Developer Lab", color = MyatoGrayLight, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Principais Recursos:", color = MyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        "• Até 20 Filas Independentes de Reprodução\n" +
+                        "• Letras Sincronizadas (.LRC) com Edição em Tempo Real\n" +
+                        "• Modo Repetição A-B com Marcadores de Áudio\n" +
+                        "• Equalizador de 10 Bandas com Perfis por Dispositivo\n" +
+                        "• Ajuste Fino de Velocidade (0.25x–3.0x) e Tom (0.5x–2.0x)\n" +
+                        "• Editor de Tags ID3 Individual e em Lote\n" +
+                        "• Notificação Rica com Controles e Dispositivo Conectado\n" +
+                        "• Backup e Restauração Completa em JSON",
+                        color = MyatoGrayLight,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Privacidade & Permissões:", color = MyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        "O Myato-Player é 100% offline e local. Nenhuma música ou dado pessoal é enviado a servidores externos. As permissões de áudio são utilizadas exclusivamente para tocar suas faixas locais.",
+                        color = MyatoGrayLight,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Créditos & Bibliotecas:", color = MyatoWhite, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        "Android Media3 ExoPlayer, Jetpack Compose Material 3, Android Room Database, Kotlin Coroutines & Flow.",
+                        color = MyatoGrayLight,
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showHelpDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MyatoGreen, contentColor = MyatoBackground)
+                ) {
+                    Text("Entendido")
+                }
+            }
+        )
+    }
+
+    // Exit Application Dialog (Section 6)
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = MyatoCard,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PowerSettingsNew, null, tint = MyatoError)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Fechar Aplicativo", color = MyatoWhite, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    "Deseja apenas fechar a tela (a reprodução continuará em segundo plano na notificação) ou parar a reprodução e encerrar o serviço completamente?",
+                    color = MyatoGrayLight,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitDialog = false
+                        onExitApp()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MyatoError, contentColor = MyatoWhite)
+                ) {
+                    Text("Parar e Encerrar")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showExitDialog = false
+                        onClose()
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MyatoWhite)
+                ) {
+                    Text("Apenas Sair da Tela")
+                }
+            }
+        )
     }
 }

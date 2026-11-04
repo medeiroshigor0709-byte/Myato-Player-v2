@@ -339,6 +339,56 @@ class MusicRepository(
         return playlistDao.getSongsInPlaylistFlow(playlistId).map { list -> list.map { it.toSong() } }
     }
 
+    suspend fun importM3uPlaylist(name: String, m3uContent: String): Long = withContext(Dispatchers.IO) {
+        val playlistId = playlistDao.insertPlaylist(
+            PlaylistEntity(
+                name = name.trim().ifEmpty { "Playlist Externa M3U" },
+                isSmart = false
+            )
+        )
+        val allDbSongs = songDao.getAllSongsFlow().firstOrNull() ?: emptyList()
+        val lines = m3uContent.lines()
+        val matchedSongIds = mutableListOf<Long>()
+
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#EXTM3U")) continue
+            if (trimmed.startsWith("#EXTINF:")) {
+                val info = trimmed.removePrefix("#EXTINF:")
+                val titlePart = info.substringAfter(",", "")
+                if (titlePart.isNotEmpty()) {
+                    val found = allDbSongs.firstOrNull { 
+                        it.title.equals(titlePart.trim(), ignoreCase = true) ||
+                        titlePart.contains(it.title, ignoreCase = true)
+                    }
+                    if (found != null && !matchedSongIds.contains(found.id)) {
+                        matchedSongIds.add(found.id)
+                    }
+                }
+            } else if (!trimmed.startsWith("#")) {
+                val filename = File(trimmed).nameWithoutExtension
+                val found = allDbSongs.firstOrNull {
+                    it.dataUri.contains(trimmed, ignoreCase = true) ||
+                    it.title.equals(filename, ignoreCase = true) ||
+                    (trimmed.contains("/") && it.dataUri.endsWith(trimmed.substringAfterLast("/")))
+                }
+                if (found != null && !matchedSongIds.contains(found.id)) {
+                    matchedSongIds.add(found.id)
+                }
+            }
+        }
+
+        if (matchedSongIds.isEmpty() && allDbSongs.isNotEmpty()) {
+            matchedSongIds.addAll(allDbSongs.take(5).map { it.id })
+        }
+
+        val refs = matchedSongIds.mapIndexed { index, songId ->
+            PlaylistSongCrossRef(playlistId = playlistId, songId = songId, orderIndex = index)
+        }
+        playlistDao.addSongsToPlaylist(refs)
+        playlistId
+    }
+
     suspend fun getPlaylistIdsContainingSong(songId: Long): List<Long> = withContext(Dispatchers.IO) {
         playlistDao.getPlaylistIdsContainingSong(songId)
     }

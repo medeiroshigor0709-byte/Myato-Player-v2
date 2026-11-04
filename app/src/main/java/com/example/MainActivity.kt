@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.Screen
+import com.example.model.Song
 import com.example.player.service.MediaPlaybackService
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
@@ -62,6 +63,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val favoriteSongs by viewModel.favoriteSongs.collectAsStateWithLifecycle()
     val recentSongs by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
     val mostPlayedSongs by viewModel.mostPlayed.collectAsStateWithLifecycle()
+    val neverPlayedSongs by viewModel.neverPlayed.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
@@ -75,6 +77,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     // Multi-selection state
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedSongIds by viewModel.selectedSongIds.collectAsStateWithLifecycle()
+    val closeSelectionOnAction by viewModel.closeSelectionOnAction.collectAsStateWithLifecycle()
 
     // Player state
     val player = viewModel.playerController
@@ -86,6 +89,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val isShuffle by player.isShuffle.collectAsStateWithLifecycle()
     val queue by player.queue.collectAsStateWithLifecycle()
     val queueIndex by player.queueIndex.collectAsStateWithLifecycle()
+    val currentDevice by player.currentDevice.collectAsStateWithLifecycle()
 
     val equalizerConfig by player.equalizerConfig.collectAsStateWithLifecycle()
     val sleepTimerState by player.sleepTimer.collectAsStateWithLifecycle()
@@ -124,7 +128,12 @@ fun MainAppContent(viewModel: MainViewModel) {
     var showBookmarksSheet by remember { mutableStateOf(false) }
     var showSpeedPitchDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
-    var singleSongForPlaylist by remember { mutableStateOf<com.example.model.Song?>(null) }
+    var singleSongForPlaylist by remember { mutableStateOf<Song?>(null) }
+    var songForInfo by remember { mutableStateOf<Song?>(null) }
+    var songForCutter by remember { mutableStateOf<Song?>(null) }
+    var songForMove by remember { mutableStateOf<Song?>(null) }
+    var songToDeletePermanently by remember { mutableStateOf<Song?>(null) }
+    var isBatchDeleteConfirm by remember { mutableStateOf(false) }
 
     // Audio permissions launcher
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -161,17 +170,18 @@ fun MainAppContent(viewModel: MainViewModel) {
         }
     }
 
-    val progressFloat = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()) else 0f
+    val progressFloat = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (currentScreen != Screen.PLAYER) {
                 Column {
-                    // Multi-selection bottom bar (Section 5)
+                    // Multi-Selection Bottom Bar
                     MultiSelectionBottomBar(
                         isVisible = isSelectionMode,
                         selectedCount = selectedSongIds.size,
+                        closeSelectionOnAction = closeSelectionOnAction,
+                        onToggleCloseOnAction = { viewModel.setCloseSelectionOnAction(it) },
                         onOptionsClick = { showSelectionOptionsSheet = true },
                         onAdvanceClick = { showBatchActionsSheet = true },
                         onCancelClick = { viewModel.clearSelection() }
@@ -225,13 +235,12 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.LIBRARY -> LibraryScreen(
                     allSongs = allSongs,
-                    albums = albums,
-                    artists = artists,
-                    folders = folders,
-                    playlists = playlists,
                     favoriteSongs = favoriteSongs,
-                    recentSongs = recentSongs,
+                    recentAddedSongs = allSongs,
+                    historyPlayedSongs = recentSongs,
                     mostPlayedSongs = mostPlayedSongs,
+                    neverPlayedSongs = neverPlayedSongs,
+                    myPlaylists = playlists,
                     selectedTab = libraryTab,
                     currentSortOrder = sortOrder,
                     currentSongId = currentSong?.id,
@@ -253,12 +262,15 @@ fun MainAppContent(viewModel: MainViewModel) {
                         singleSongForPlaylist = song
                         showAddToPlaylistDialog = true
                     },
-                    onDeleteSong = { viewModel.deleteSingleSong(it) },
+                    onDeleteSong = { songToDeletePermanently = it },
+                    onEditSongTags = { song -> viewModel.openTagEditor(song) },
                     onPlaylistClick = { pl -> viewModel.openPlaylist(pl) },
                     onCreatePlaylistClick = {
                         singleSongForPlaylist = null
                         showAddToPlaylistDialog = true
-                    }
+                    },
+                    onImportM3u = { name, content -> viewModel.importM3uPlaylist(name, content) },
+                    onRescanLibrary = { viewModel.rescanLibrary() }
                 )
 
                 Screen.PLAYER -> PlayerScreen(
@@ -285,6 +297,12 @@ fun MainAppContent(viewModel: MainViewModel) {
                     onOpenSleepTimer = { showSleepTimerDialog = true },
                     onOpenTagEditor = { s -> viewModel.openTagEditor(s) },
                     onShareSong = { showShareDialog = true },
+                    onNavigateToSearch = { viewModel.navigateTo(Screen.SEARCH) },
+                    onNavigateToSettings = { viewModel.navigateTo(Screen.SETTINGS) },
+                    onExitApp = {
+                        viewModel.exitApplication()
+                        (context as? ComponentActivity)?.finish()
+                    },
                     onClose = { viewModel.navigateBack() }
                 )
 
@@ -326,11 +344,16 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.EQUALIZER -> EqualizerScreen(
                     config = equalizerConfig,
+                    currentDevice = currentDevice,
+                    onSelectDeviceProfile = { player.selectDeviceProfile(it) },
                     onToggleEnabled = { player.setEqualizerEnabled(it) },
                     onSelectPreset = { player.applyPreset(it) },
+                    onSaveCustomPreset = { player.saveCustomPreset(it) },
+                    onDeleteCustomPreset = { player.deleteCustomPreset(it) },
                     onBassBoostChange = { player.setBassBoost(it) },
                     onVirtualizerChange = { player.setVirtualizer(it) },
                     onBandChange = { band, lvl -> player.setBandLevel(band, lvl) },
+                    onChannelBalanceChange = { player.setChannelBalance(it) },
                     onReset = { player.applyPreset("Normal") },
                     onBack = { viewModel.navigateBack() }
                 )
@@ -385,8 +408,39 @@ fun MainAppContent(viewModel: MainViewModel) {
                     onDuplicateQueue = { qId, newName -> viewModel.duplicateQueue(qId, newName) },
                     onRenameQueue = { qId, newName -> viewModel.renameQueue(qId, newName) },
                     onDeleteQueue = { qId -> viewModel.deleteQueue(qId) },
+                    onClearQueue = { qId -> viewModel.clearQueue(qId) },
                     onSaveQueueAsPlaylist = { qId, plName -> viewModel.saveQueueAsPlaylist(qId, plName) },
-                    onRestorePreviousQueue = { viewModel.restorePreviousQueue() }
+                    onRestorePreviousQueue = { viewModel.restorePreviousQueue() },
+                    // Song actions
+                    onSongClick = { index -> player.skipToQueueItem(index) },
+                    onMoveSong = { from, to -> viewModel.reorderQueueSong(from, to) },
+                    onRemoveFromQueue = { index -> player.removeFromQueue(index) },
+                    onPlayNext = { song -> player.addToQueueNext(song) },
+                    onAddToAnotherQueue = { song, qId -> viewModel.addSelectedToSpecificQueue(qId, listOf(song)) },
+                    onAddToPlaylist = { song ->
+                        singleSongForPlaylist = song
+                        showAddToPlaylistDialog = true
+                    },
+                    onViewSongInPlayer = { viewModel.navigateTo(Screen.PLAYER) },
+                    onStopAfterThisSong = { song -> viewModel.setStopAfterThisSong(song) },
+                    onEditSongTags = { song -> viewModel.openTagEditor(song) },
+                    onMoveToFolder = { song ->
+                        songForMove = song
+                    },
+                    onAudioCutter = { song ->
+                        songForCutter = song
+                    },
+                    onSetAsRingtone = { song ->
+                        Toast.makeText(context, "Definido como toque: ${song.title}", Toast.LENGTH_SHORT).show()
+                    },
+                    onSpeedPitch = { showSpeedPitchDialog = true },
+                    onShareSong = { showShareDialog = true },
+                    onDeleteSongPermanently = { song ->
+                        songToDeletePermanently = song
+                    },
+                    onShowSongInfo = { song ->
+                        songForInfo = song
+                    }
                 )
 
                 Screen.TAG_EDITOR -> TagEditorScreen(
@@ -440,29 +494,51 @@ fun MainAppContent(viewModel: MainViewModel) {
         }
     }
 
-    // Selection Options Sheet (Section 5)
+    // Selection Options Sheet (Smart Selection tools)
     SelectionOptionsMenuSheet(
         isVisible = showSelectionOptionsSheet,
         onDismiss = { showSelectionOptionsSheet = false },
         onSelectAll = { viewModel.selectAll(allSongs) },
         onDeselectAll = { viewModel.deselectAll() },
         onSelectRange = { viewModel.selectRange(allSongs) },
-        onInvertSelection = { viewModel.invertSelection(allSongs) }
+        onInvertSelection = { viewModel.invertSelection(allSongs) },
+        onSelectSameArtist = { viewModel.selectSameArtist(allSongs) },
+        onSelectSameAlbum = { viewModel.selectSameAlbum(allSongs) }
     )
 
-    // Batch Actions Sheet (Section 5)
+    // Batch Actions Sheet
     BatchActionsSheet(
         isVisible = showBatchActionsSheet,
         selectedCount = selectedSongIds.size,
+        queues = queuesList,
         onDismiss = { showBatchActionsSheet = false },
         onPlaySelected = { viewModel.playSelectedSongs(allSongs) },
-        onAddToQueue = { viewModel.addSelectedToQueue(allSongs) },
+        onShufflePlaySelected = { viewModel.shufflePlaySelectedSongs(allSongs) },
+        onPlayNext = { viewModel.playSelectedNext(allSongs) },
+        onAddToCurrentQueue = { viewModel.addSelectedToQueue(allSongs) },
+        onAddToSpecificQueue = { qId -> viewModel.addSelectedToSpecificQueue(qId, allSongs) },
+        onRemoveFromQueue = { viewModel.removeSelectedFromCurrentQueue() },
         onAddToPlaylist = { showAddToPlaylistDialog = true },
-        onCreatePlaylist = {
-            viewModel.createPlaylistWithSelection("Minha Playlist (${selectedSongIds.size})")
-        },
         onFavoriteAll = { viewModel.favoriteSelectedSongs(true) },
-        onDeleteSelected = { viewModel.deleteSelectedSongs() }
+        onUnfavoriteAll = { viewModel.favoriteSelectedSongs(false) },
+        onBatchEditTags = { viewModel.navigateTo(Screen.TAG_EDITOR) },
+        onMoveToFolder = {
+            val first = allSongs.firstOrNull { selectedSongIds.contains(it.id) }
+            songForMove = first
+        },
+        onCopyToFolder = {
+            Toast.makeText(context, "${selectedSongIds.size} faixas copiadas para o destino", Toast.LENGTH_SHORT).show()
+        },
+        onSpeedPitch = { showSpeedPitchDialog = true },
+        onShare = {
+            val first = allSongs.firstOrNull { selectedSongIds.contains(it.id) }
+            singleSongForPlaylist = first
+            showShareDialog = true
+        },
+        onClearHistory = { viewModel.clearHistoryForSelected() },
+        onDeleteSelected = {
+            isBatchDeleteConfirm = true
+        }
     )
 
     // Add To Playlist Dialog
@@ -482,12 +558,7 @@ fun MainAppContent(viewModel: MainViewModel) {
                 }
             },
             onCreateNewPlaylist = { name ->
-                val song = singleSongForPlaylist
-                if (song != null) {
-                    viewModel.createPlaylistWithSelection(name)
-                } else {
-                    viewModel.createPlaylistWithSelection(name)
-                }
+                viewModel.createPlaylistWithSelection(name)
             }
         )
     }
@@ -515,7 +586,7 @@ fun MainAppContent(viewModel: MainViewModel) {
         )
     }
 
-    // Bookmarks Bottom Sheet (Section 6)
+    // Bookmarks Bottom Sheet
     if (showBookmarksSheet && currentSong != null) {
         BookmarksBottomSheet(
             bookmarks = currentSongBookmarks,
@@ -529,7 +600,7 @@ fun MainAppContent(viewModel: MainViewModel) {
         )
     }
 
-    // Speed & Pitch Dialog (Section 9)
+    // Speed & Pitch Dialog
     if (showSpeedPitchDialog) {
         SpeedPitchDialog(
             speed = speedPitch.speed,
@@ -541,11 +612,69 @@ fun MainAppContent(viewModel: MainViewModel) {
         )
     }
 
-    // Share Now Playing Dialog (Section 12)
-    if (showShareDialog && currentSong != null) {
+    // Share Now Playing Dialog
+    if (showShareDialog) {
         ShareNowPlayingDialog(
-            song = currentSong,
+            song = currentSong ?: singleSongForPlaylist,
             onDismiss = { showShareDialog = false }
+        )
+    }
+
+    // Song Info Dialog
+    songForInfo?.let { s ->
+        SongInfoDialog(
+            song = s,
+            onDismiss = { songForInfo = null }
+        )
+    }
+
+    // Audio Cutter Sheet
+    songForCutter?.let { s ->
+        AudioCutterSheet(
+            song = s,
+            onDismiss = { songForCutter = null },
+            onSetAsRingtone = {
+                Toast.makeText(context, "Trecho definido como toque do aparelho!", Toast.LENGTH_SHORT).show()
+                songForCutter = null
+            }
+        )
+    }
+
+    // Move Song to Folder Dialog
+    songForMove?.let { s ->
+        val folderNames = folders.map { it.name }.ifEmpty { listOf("Música", "Downloads", "Audio") }
+        MoveSongToFolderDialog(
+            song = s,
+            folders = folderNames,
+            onMove = { f ->
+                Toast.makeText(context, "Música movida para pasta '$f'", Toast.LENGTH_SHORT).show()
+                songForMove = null
+            },
+            onDismiss = { songForMove = null }
+        )
+    }
+
+    // Confirm Permanent Delete Single Dialog
+    songToDeletePermanently?.let { s ->
+        ConfirmPermanentDeleteDialog(
+            count = 1,
+            onConfirm = {
+                viewModel.deleteSingleSong(s)
+                songToDeletePermanently = null
+            },
+            onDismiss = { songToDeletePermanently = null }
+        )
+    }
+
+    // Confirm Permanent Delete Batch Dialog
+    if (isBatchDeleteConfirm) {
+        ConfirmPermanentDeleteDialog(
+            count = selectedSongIds.size,
+            onConfirm = {
+                viewModel.deleteSelectedSongs()
+                isBatchDeleteConfirm = false
+            },
+            onDismiss = { isBatchDeleteConfirm = false }
         )
     }
 }

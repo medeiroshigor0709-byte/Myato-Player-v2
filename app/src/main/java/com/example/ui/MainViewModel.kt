@@ -183,6 +183,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             SortOrder.ALBUM_ASC -> songs.sortedBy { it.album.lowercase() }
             SortOrder.DURATION_DESC -> songs.sortedByDescending { it.durationMs }
             SortOrder.DATE_ADDED_DESC -> songs.sortedByDescending { it.dateAdded }
+            SortOrder.PLAY_COUNT_DESC -> songs.sortedByDescending { it.playCount }
         }
     }
 
@@ -231,7 +232,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _searchHistory.value = emptyList()
     }
 
-    // Multi-Selection System (Section 5)
+    // Multi-Selection System (Section 4)
+    private val _closeSelectionOnAction = MutableStateFlow(true)
+    val closeSelectionOnAction: StateFlow<Boolean> = _closeSelectionOnAction.asStateFlow()
+
+    fun setCloseSelectionOnAction(enabled: Boolean) {
+        _closeSelectionOnAction.value = enabled
+    }
+
     fun startSelection(initialSongId: Long) {
         _isSelectionMode.value = true
         _selectedSongIds.value = setOf(initialSongId)
@@ -291,6 +299,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun selectSameArtist(songs: List<Song>) {
+        val selectedIds = _selectedSongIds.value
+        val artists = songs.filter { selectedIds.contains(it.id) }.map { it.artist }.toSet()
+        if (artists.isNotEmpty()) {
+            val matching = songs.filter { artists.contains(it.artist) }.map { it.id }.toSet()
+            _selectedSongIds.value = _selectedSongIds.value + matching
+            emitMessage("Músicas de ${artists.size} artista(s) selecionadas")
+        }
+    }
+
+    fun selectSameAlbum(songs: List<Song>) {
+        val selectedIds = _selectedSongIds.value
+        val albums = songs.filter { selectedIds.contains(it.id) }.map { it.album }.toSet()
+        if (albums.isNotEmpty()) {
+            val matching = songs.filter { albums.contains(it.album) }.map { it.id }.toSet()
+            _selectedSongIds.value = _selectedSongIds.value + matching
+            emitMessage("Músicas de ${albums.size} álbum(ns) selecionadas")
+        }
+    }
+
     fun clearSelection() {
         _isSelectionMode.value = false
         _selectedSongIds.value = emptySet()
@@ -298,14 +326,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lastSelectedId = null
     }
 
-    // Batch Actions on Multi-Selection
+    private fun maybeCloseSelection() {
+        if (_closeSelectionOnAction.value) {
+            clearSelection()
+        }
+    }
+
+    // Batch Actions on Multi-Selection (Section 4)
     fun playSelectedSongs(songs: List<Song>) {
         val selected = songs.filter { _selectedSongIds.value.contains(it.id) }
         if (selected.isNotEmpty()) {
             playerController.playSongList(selected, 0)
             emitMessage("Reproduzindo ${selected.size} músicas selecionadas")
-            clearSelection()
+            maybeCloseSelection()
         }
+    }
+
+    fun shufflePlaySelectedSongs(songs: List<Song>) {
+        val selected = songs.filter { _selectedSongIds.value.contains(it.id) }.shuffled()
+        if (selected.isNotEmpty()) {
+            playerController.playSongList(selected, 0)
+            emitMessage("Reproduzindo ${selected.size} músicas em ordem aleatória")
+            maybeCloseSelection()
+        }
+    }
+
+    fun playSelectedNext(songs: List<Song>) {
+        val selected = songs.filter { _selectedSongIds.value.contains(it.id) }
+        selected.reversed().forEach { playerController.addToQueueNext(it) }
+        emitMessage("${selected.size} músicas colocadas para tocar a seguir")
+        maybeCloseSelection()
     }
 
     fun addSelectedToQueue(songs: List<Song>) {
@@ -313,8 +363,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (selected.isNotEmpty()) {
             playerController.addToQueueEnd(selected)
             emitMessage("${selected.size} músicas adicionadas à fila")
-            clearSelection()
+            maybeCloseSelection()
         }
+    }
+
+    fun addSelectedToSpecificQueue(queueId: Long, songs: List<Song>) {
+        val selected = songs.filter { _selectedSongIds.value.contains(it.id) }
+        if (selected.isNotEmpty()) {
+            val qList = playerController.queuesList.value.toMutableList()
+            val targetIdx = qList.indexOfFirst { it.id == queueId }
+            if (targetIdx != -1) {
+                val q = qList[targetIdx]
+                qList[targetIdx] = q.copy(songs = q.songs + selected)
+                viewModelScope.launch {
+                    musicRepository.saveQueue(qList[targetIdx])
+                }
+                emitMessage("${selected.size} músicas adicionadas à fila '${q.name}'")
+            }
+            maybeCloseSelection()
+        }
+    }
+
+    fun removeSelectedFromCurrentQueue() {
+        val selectedIds = _selectedSongIds.value
+        val curQueue = playerController.queue.value
+        val remaining = curQueue.filterNot { selectedIds.contains(it.id) }
+        if (remaining.isNotEmpty()) {
+            playerController.playSongList(remaining, 0)
+        } else {
+            playerController.clearQueue()
+        }
+        emitMessage("${selectedIds.size} músicas removidas da fila")
+        maybeCloseSelection()
     }
 
     fun addSelectedToPlaylist(playlistId: Long) {
@@ -322,7 +402,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             musicRepository.addSongsToPlaylist(playlistId, ids)
             emitMessage("${ids.size} músicas adicionadas à playlist")
-            clearSelection()
+            maybeCloseSelection()
         }
     }
 
@@ -334,7 +414,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 musicRepository.addSongsToPlaylist(newId, ids)
             }
             emitMessage("Playlist '$name' criada com ${ids.size} músicas")
-            clearSelection()
+            maybeCloseSelection()
         }
     }
 
@@ -344,7 +424,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             musicRepository.setFavoriteForMultiple(ids, isFavorite)
             val msg = if (isFavorite) "adicionadas às favoritas" else "removidas das favoritas"
             emitMessage("${ids.size} músicas $msg")
-            clearSelection()
+            maybeCloseSelection()
+        }
+    }
+
+    fun clearHistoryForSelected() {
+        val ids = _selectedSongIds.value.toList()
+        viewModelScope.launch {
+            musicRepository.clearHistoryForSongs(ids)
+            emitMessage("Histórico limpo para ${ids.size} músicas")
+            maybeCloseSelection()
         }
     }
 
@@ -352,9 +441,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val ids = _selectedSongIds.value
         viewModelScope.launch {
             musicRepository.deleteSongs(ids)
-            emitMessage("${ids.size} músicas excluídas da biblioteca")
+            emitMessage("${ids.size} músicas excluídas da memória")
             clearSelection()
         }
+    }
+
+    fun importM3uPlaylist(name: String, content: String) {
+        viewModelScope.launch {
+            val plId = musicRepository.importM3uPlaylist(name, content)
+            emitMessage("Playlist M3U importada com sucesso!")
+        }
+    }
+
+    fun reorderQueueSong(fromIndex: Int, toIndex: Int) {
+        val q = playerController.queue.value.toMutableList()
+        if (fromIndex in q.indices && toIndex in q.indices) {
+            val item = q.removeAt(fromIndex)
+            q.add(toIndex, item)
+            playerController.playSongList(q, toIndex)
+            emitMessage("Fila reorganizada")
+        }
+    }
+
+    fun clearQueue(queueId: Long) {
+        if (queueId == playerController.activeQueueId.value) {
+            playerController.clearQueue()
+        }
+        viewModelScope.launch {
+            val q = playerController.queuesList.value.firstOrNull { it.id == queueId }
+            if (q != null) {
+                musicRepository.saveQueue(q.copy(songs = emptyList()))
+            }
+        }
+        emitMessage("Fila esvaziada")
+    }
+
+    fun setStopAfterThisSong(song: Song) {
+        playerController.setStopAfterCurrentTrack(true)
+        emitMessage("A reprodução será encerrada após '${song.title}'")
+    }
+
+    fun exitApplication() {
+        playerController.stopAndReleaseForExit()
+        val serviceIntent = android.content.Intent(getApplication(), com.example.player.service.MediaPlaybackService::class.java).apply {
+            action = com.example.player.service.MediaPlaybackService.ACTION_STOP_SERVICE
+        }
+        getApplication<Application>().startService(serviceIntent)
     }
 
     // Single item actions

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -14,10 +15,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.AudioOutputDevice
 import com.example.model.EqualizerConfig
 import com.example.ui.theme.*
 
@@ -25,33 +28,64 @@ import com.example.ui.theme.*
 @Composable
 fun EqualizerScreen(
     config: EqualizerConfig,
+    currentDevice: AudioOutputDevice,
+    onSelectDeviceProfile: (AudioOutputDevice) -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
     onSelectPreset: (String) -> Unit,
+    onSaveCustomPreset: (String) -> Unit,
+    onDeleteCustomPreset: (String) -> Unit,
     onBassBoostChange: (Int) -> Unit,
     onVirtualizerChange: (Int) -> Unit,
     onBandChange: (Int, Int) -> Unit,
+    onChannelBalanceChange: (Float) -> Unit,
     onReset: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val presets = listOf(
+    var showSavePresetDialog by remember { mutableStateOf(false) }
+    var newPresetName by remember { mutableStateOf("") }
+
+    val standardPresets = listOf(
+        "Normal",
+        "Bass Boost",
+        "Reduced Bass",
         "Rock",
         "Pop",
         "Clássico",
         "Jazz",
-        "Voz",
-        "Grave Reforçado",
-        "Agudos",
-        "Normal"
+        "Eletrônica",
+        "Hip-Hop",
+        "Vocal",
+        "Personalizado"
     )
 
-    val bandFrequencies = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
+    val allPresets = remember(config.customPresets) {
+        val customs = config.customPresets.keys.toList()
+        (standardPresets + customs).distinct()
+    }
+
+    // 10 Frequency Bands requested in Section 5 (Image 5 reference)
+    val bandFrequencies = listOf(
+        "31,5 Hz",
+        "63 Hz",
+        "125 Hz",
+        "250 Hz",
+        "500 Hz",
+        "1 kHz",
+        "2 kHz",
+        "4 kHz",
+        "8 kHz",
+        "16 kHz"
+    )
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Equalizador de Áudio", color = MyatoWhite, fontWeight = FontWeight.Bold)
+                    Column {
+                        Text("Equalizador de Áudio", color = MyatoWhite, fontWeight = FontWeight.Bold)
+                        Text("Perfis independentes por dispositivo", color = MyatoGreen, fontSize = 11.sp)
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -93,44 +127,121 @@ fun EqualizerScreen(
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Presets Horizontal Carousel
+            // Device Profile Switcher
             Text(
-                text = "Predefinições",
+                text = "Perfil do Dispositivo de Saída",
                 color = MyatoWhite,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 8.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(presets) { preset ->
-                    val isSelected = config.presetName == preset
+                AudioOutputDevice.values().forEach { dev ->
+                    val isConnected = dev == currentDevice
+                    val chipLabel = when (dev) {
+                        AudioOutputDevice.SPEAKER -> "Alto-falante"
+                        AudioOutputDevice.WIRED_HEADSET -> "Fone c/ Fio"
+                        AudioOutputDevice.BLUETOOTH -> "Bluetooth"
+                        AudioOutputDevice.USB -> "DAC / USB"
+                    }
+
                     FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelectPreset(preset) },
+                        selected = isConnected,
+                        onClick = { onSelectDeviceProfile(dev) },
                         label = {
-                            Text(
-                                text = preset,
-                                color = if (isSelected) MyatoBackground else MyatoWhite,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = chipLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (isConnected) {
+                                    Text("● CONECTADO", fontSize = 8.sp, color = MyatoGreen)
+                                }
+                            }
                         },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MyatoGreen,
-                            selectedLabelColor = MyatoBackground,
+                            selectedContainerColor = MyatoSurfaceVariant,
+                            selectedLabelColor = MyatoGreen,
                             containerColor = MyatoCard
                         ),
-                        modifier = Modifier.testTag("preset_$preset")
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Presets Horizontal Carousel + Save Preset Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Predefinições de Áudio",
+                    color = MyatoWhite,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                TextButton(onClick = {
+                    newPresetName = "Meu Preset ${config.customPresets.size + 1}"
+                    showSavePresetDialog = true
+                }) {
+                    Icon(Icons.Default.Save, null, tint = MyatoGreen, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Salvar Atual", color = MyatoGreen, fontSize = 12.sp)
+                }
+            }
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
+                items(allPresets) { preset ->
+                    val isSelected = config.presetName == preset
+                    val isCustom = config.customPresets.containsKey(preset)
+
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onSelectPreset(preset) },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = preset,
+                                    color = if (isSelected) MyatoBackground else MyatoWhite,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (isCustom) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Excluir preset",
+                                        tint = if (isSelected) MyatoBackground else MyatoError,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { onDeleteCustomPreset(preset) }
+                                    )
+                                }
+                            }
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MyatoGreen,
+                            selectedLabelColor = MyatoBackground,
+                            containerColor = MyatoCard
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Bass Boost & Virtualizer 3D Cards
             Card(
@@ -148,7 +259,7 @@ fun EqualizerScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Speaker, null, tint = MyatoGreen, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Reforço de Graves (Bass Boost)", color = MyatoWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Reforço de Graves (Bass Boost)", color = MyatoWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Text("${config.bassBoost / 10}%", color = MyatoGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
@@ -177,7 +288,7 @@ fun EqualizerScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.SurroundSound, null, tint = MyatoGreen, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Surround / Virtualizador 3D", color = MyatoWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Virtualizador 3D Surround", color = MyatoWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Text("${config.virtualizer / 10}%", color = MyatoGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
@@ -194,12 +305,49 @@ fun EqualizerScreen(
                         ),
                         modifier = Modifier.testTag("virtualizer_slider")
                     )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Stereo Channel Balance (L / R)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.GraphicEq, null, tint = MyatoGreen, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Balanço Estéreo (E / D)", color = MyatoWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            text = when {
+                                config.channelBalance < -0.1f -> "E ${(-config.channelBalance * 100).toInt()}%"
+                                config.channelBalance > 0.1f -> "D ${(config.channelBalance * 100).toInt()}%"
+                                else -> "Centro"
+                            },
+                            color = MyatoGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Slider(
+                        value = config.channelBalance,
+                        onValueChange = { onChannelBalanceChange(it) },
+                        valueRange = -1.0f..1.0f,
+                        enabled = config.isEnabled,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MyatoGreen,
+                            activeTrackColor = MyatoGreen,
+                            inactiveTrackColor = MyatoBorder
+                        )
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 5 Band Equalizer Sliders
+            // 10 Band Equalizer Sliders
             Card(
                 colors = CardDefaults.cardColors(containerColor = MyatoCard),
                 shape = RoundedCornerShape(16.dp),
@@ -207,7 +355,7 @@ fun EqualizerScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Ajuste Fino de Frequências",
+                        text = "Equalizador de 10 Bandas",
                         color = MyatoWhite,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
@@ -219,14 +367,14 @@ fun EqualizerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = freqName,
                                 color = MyatoGrayLight,
                                 fontSize = 12.sp,
-                                modifier = Modifier.width(55.dp)
+                                modifier = Modifier.width(62.dp)
                             )
 
                             Slider(
@@ -244,9 +392,9 @@ fun EqualizerScreen(
 
                             Text(
                                 text = "${currentLevel / 100} dB",
-                                color = if (currentLevel > 0) MyatoGreen else MyatoGrayMedium,
+                                color = if (currentLevel > 0) MyatoGreen else if (currentLevel < 0) MyatoError else MyatoGrayMedium,
                                 fontSize = 11.sp,
-                                modifier = Modifier.width(45.dp)
+                                modifier = Modifier.width(48.dp)
                             )
                         }
                     }
@@ -267,10 +415,51 @@ fun EqualizerScreen(
             ) {
                 Icon(Icons.Default.Refresh, null, tint = MyatoGrayLight, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Restaurar Padrão")
+                Text("Restaurar Padrão do Perfil")
             }
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    // Save Custom Preset Dialog
+    if (showSavePresetDialog) {
+        AlertDialog(
+            onDismissRequest = { showSavePresetDialog = false },
+            containerColor = MyatoCard,
+            title = { Text("Salvar Predefinição", color = MyatoWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = newPresetName,
+                    onValueChange = { newPresetName = it },
+                    label = { Text("Nome do Preset") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MyatoGreen,
+                        focusedTextColor = MyatoWhite,
+                        unfocusedTextColor = MyatoWhite
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newPresetName.isNotBlank()) {
+                            onSaveCustomPreset(newPresetName.trim())
+                        }
+                        showSavePresetDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MyatoGreen, contentColor = MyatoBackground)
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSavePresetDialog = false }) {
+                    Text("Cancelar", color = MyatoGrayLight)
+                }
+            }
+        )
     }
 }

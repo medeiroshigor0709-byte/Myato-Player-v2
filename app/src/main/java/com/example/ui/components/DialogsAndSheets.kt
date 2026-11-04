@@ -3,6 +3,8 @@ package com.example.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -774,4 +776,232 @@ fun ShareNowPlayingDialog(
         }
     )
 }
+
+// Musicolet Song Info Dialog (Option 1)
+@Composable
+fun SongInfoDialog(
+    song: Song?,
+    onDismiss: () -> Unit
+) {
+    if (song == null) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MyatoCard,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Info, null, tint = MyatoGreen)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Detalhes da Música", color = MyatoWhite, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                InfoRow("Título", song.title)
+                InfoRow("Artista", song.artist)
+                InfoRow("Álbum", song.album)
+                InfoRow("Gênero", song.genre)
+                InfoRow("Ano", song.year.ifEmpty { "Não informado" })
+                InfoRow("Faixa / Disco", "${song.trackNumber.ifEmpty { "1" }} (Disco ${song.discNumber})")
+                InfoRow("Duração", song.formattedDuration)
+                InfoRow("Tamanho", "%.2f MB".format(song.sizeBytes.toFloat() / (1024 * 1024)))
+                InfoRow("Pasta", song.folderName)
+                InfoRow("Caminho", song.dataUri)
+                InfoRow("Reproduções", "${song.playCount} vezes")
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = MyatoGreen, contentColor = MyatoBackground)
+            ) {
+                Text("Fechar")
+            }
+        }
+    )
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(label, color = MyatoGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = MyatoWhite, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+// Musicolet Audio Cutter / Ringtone Tool (Option 10 & 11)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AudioCutterSheet(
+    song: Song?,
+    onDismiss: () -> Unit,
+    onSetAsRingtone: () -> Unit
+) {
+    if (song == null) return
+    var startMs by remember { mutableFloatStateOf(0f) }
+    var endMs by remember { mutableFloatStateOf((song.durationMs / 1000).coerceAtLeast(30).toFloat()) }
+    val maxSeconds = (song.durationMs / 1000).coerceAtLeast(1).toFloat()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MyatoCard,
+        contentColor = MyatoWhite
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ContentCut, null, tint = MyatoGreen)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Cortador de Áudio & Toque", color = MyatoWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(song.title, color = MyatoGrayLight, fontSize = 13.sp)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Start Position
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Início do Trecho:", color = MyatoWhite, fontSize = 12.sp)
+                Text("%02d:%02d".format((startMs / 60).toInt(), (startMs % 60).toInt()), color = MyatoGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+            Slider(
+                value = startMs,
+                onValueChange = { startMs = it.coerceAtMost(endMs - 5f) },
+                valueRange = 0f..maxSeconds,
+                colors = SliderDefaults.colors(thumbColor = MyatoGreen, activeTrackColor = MyatoGreen, inactiveTrackColor = MyatoBorder)
+            )
+
+            // End Position
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Fim do Trecho:", color = MyatoWhite, fontSize = 12.sp)
+                Text("%02d:%02d".format((endMs / 60).toInt(), (endMs % 60).toInt()), color = MyatoGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+            Slider(
+                value = endMs,
+                onValueChange = { endMs = it.coerceAtLeast(startMs + 5f) },
+                valueRange = 0f..maxSeconds,
+                colors = SliderDefaults.colors(thumbColor = MyatoGreen, activeTrackColor = MyatoGreen, inactiveTrackColor = MyatoBorder)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        onSetAsRingtone()
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MyatoGreen, contentColor = MyatoBackground)
+                ) {
+                    Icon(Icons.Default.RingVolume, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Definir Toque")
+                }
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(0.7f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MyatoWhite)
+                ) {
+                    Text("Cancelar")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+// Confirmation Dialog for permanent deletion (Option 14 & Batch delete)
+@Composable
+fun ConfirmPermanentDeleteDialog(
+    count: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MyatoCard,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DeleteForever, null, tint = MyatoError)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Apagar Permanentemente?", color = MyatoWhite, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Text(
+                "Tem certeza de que deseja excluir $count arquivo${if (count == 1) "" else "s"} de áudio permanentemente da memória do dispositivo? Esta ação não pode ser desfeita.",
+                color = MyatoGrayLight,
+                fontSize = 13.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MyatoError, contentColor = MyatoWhite)
+            ) {
+                Text("Sim, Apagar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = MyatoGrayLight)
+            }
+        }
+    )
+}
+
+// Move to Folder Dialog (Option 9)
+@Composable
+fun MoveSongToFolderDialog(
+    song: Song?,
+    folders: List<String>,
+    onMove: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (song == null) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MyatoCard,
+        title = { Text("Mover para Pasta", color = MyatoWhite, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+                Text("Escolha a pasta de destino para \"${song.title}\":", color = MyatoGrayLight, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyColumn {
+                    items(folders.size) { idx ->
+                        val f = folders[idx]
+                        ListItem(
+                            headlineContent = { Text(f, color = MyatoWhite) },
+                            leadingContent = { Icon(Icons.Default.Folder, null, tint = MyatoGreen) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onMove(f)
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = MyatoCard)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = MyatoGrayLight)
+            }
+        }
+    )
+}
+
 

@@ -6,6 +6,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,17 +14,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.PlaybackQueue
 import com.example.ui.theme.*
 
 @Composable
 fun MultiSelectionBottomBar(
     isVisible: Boolean,
     selectedCount: Int,
+    closeSelectionOnAction: Boolean,
+    onToggleCloseOnAction: (Boolean) -> Unit,
     onOptionsClick: () -> Unit,
     onAdvanceClick: () -> Unit,
     onCancelClick: () -> Unit,
@@ -46,7 +51,7 @@ fun MultiSelectionBottomBar(
             shadowElevation = 8.dp
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                // Header status
+                // Header status & close
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -76,14 +81,39 @@ fun MultiSelectionBottomBar(
                     }
                 }
 
+                // Checkbox: "Fechar processo de seleção após uma opção ser selecionada"
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggleCloseOnAction(!closeSelectionOnAction) }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = closeSelectionOnAction,
+                        onCheckedChange = { onToggleCloseOnAction(it) },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MyatoGreen,
+                            checkmarkColor = MyatoBackground,
+                            uncheckedColor = MyatoGrayMedium
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Fechar seleção após executar ação",
+                        color = MyatoGrayLight,
+                        fontSize = 12.sp
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // The 3 required buttons: Opções, Selecionar avançar, Cancelar
+                // The 2 primary trigger buttons: Opções de seleção & Ações em lote
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Botão 1: Opções
+                    // Botão 1: Seleção Inteligente
                     OutlinedButton(
                         onClick = onOptionsClick,
                         modifier = Modifier
@@ -100,10 +130,10 @@ fun MultiSelectionBottomBar(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Opções", fontSize = 13.sp)
+                        Text("Seleção", fontSize = 13.sp)
                     }
 
-                    // Botão 2: Selecionar avançar (Ações em massa)
+                    // Botão 2: Ações em massa
                     Button(
                         onClick = onAdvanceClick,
                         modifier = Modifier
@@ -141,7 +171,9 @@ fun SelectionOptionsMenuSheet(
     onSelectAll: () -> Unit,
     onDeselectAll: () -> Unit,
     onSelectRange: () -> Unit,
-    onInvertSelection: () -> Unit
+    onInvertSelection: () -> Unit,
+    onSelectSameArtist: () -> Unit,
+    onSelectSameAlbum: () -> Unit
 ) {
     if (!isVisible) return
 
@@ -156,15 +188,15 @@ fun SelectionOptionsMenuSheet(
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Text(
-                text = "Opções de Seleção Múltipla",
+                text = "Seleção Inteligente",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = MyatoGreen,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 12.dp)
             )
 
             ListItem(
-                headlineContent = { Text("1. Selecionar todas a partir desta lista", color = MyatoWhite) },
+                headlineContent = { Text("1. Selecionar todas da lista", color = MyatoWhite) },
                 leadingContent = { Icon(Icons.Default.SelectAll, null, tint = MyatoGreen) },
                 modifier = Modifier
                     .testTag("opt_select_all")
@@ -178,7 +210,7 @@ fun SelectionOptionsMenuSheet(
             HorizontalDivider(color = MyatoBorder)
 
             ListItem(
-                headlineContent = { Text("2. Desmarcar todas a partir desta lista", color = MyatoWhite) },
+                headlineContent = { Text("2. Desmarcar todas da lista", color = MyatoWhite) },
                 leadingContent = { Icon(Icons.Default.Deselect, null, tint = MyatoGrayLight) },
                 modifier = Modifier
                     .testTag("opt_deselect_all")
@@ -192,7 +224,7 @@ fun SelectionOptionsMenuSheet(
             HorizontalDivider(color = MyatoBorder)
 
             ListItem(
-                headlineContent = { Text("3. Selecionar músicas entre a primeira e a última", color = MyatoWhite) },
+                headlineContent = { Text("3. Selecionar intervalo (entre a primeira e última)", color = MyatoWhite) },
                 leadingContent = { Icon(Icons.Default.LinearScale, null, tint = MyatoGreen) },
                 modifier = Modifier
                     .testTag("opt_select_range")
@@ -217,6 +249,32 @@ fun SelectionOptionsMenuSheet(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
 
+            HorizontalDivider(color = MyatoBorder)
+
+            ListItem(
+                headlineContent = { Text("5. Selecionar músicas do mesmo artista", color = MyatoWhite) },
+                leadingContent = { Icon(Icons.Default.Person, null, tint = MyatoGreen) },
+                modifier = Modifier
+                    .clickable {
+                        onSelectSameArtist()
+                        onDismiss()
+                    },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+
+            HorizontalDivider(color = MyatoBorder)
+
+            ListItem(
+                headlineContent = { Text("6. Selecionar músicas do mesmo álbum", color = MyatoWhite) },
+                leadingContent = { Icon(Icons.Default.Album, null, tint = MyatoGreen) },
+                modifier = Modifier
+                    .clickable {
+                        onSelectSameAlbum()
+                        onDismiss()
+                    },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -227,15 +285,28 @@ fun SelectionOptionsMenuSheet(
 fun BatchActionsSheet(
     isVisible: Boolean,
     selectedCount: Int,
+    queues: List<PlaybackQueue>,
     onDismiss: () -> Unit,
     onPlaySelected: () -> Unit,
-    onAddToQueue: () -> Unit,
+    onShufflePlaySelected: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToCurrentQueue: () -> Unit,
+    onAddToSpecificQueue: (Long) -> Unit,
+    onRemoveFromQueue: () -> Unit,
     onAddToPlaylist: () -> Unit,
-    onCreatePlaylist: () -> Unit,
     onFavoriteAll: () -> Unit,
+    onUnfavoriteAll: () -> Unit,
+    onBatchEditTags: () -> Unit,
+    onMoveToFolder: () -> Unit,
+    onCopyToFolder: () -> Unit,
+    onSpeedPitch: () -> Unit,
+    onShare: () -> Unit,
+    onClearHistory: () -> Unit,
     onDeleteSelected: () -> Unit
 ) {
     if (!isVisible) return
+
+    var showQueuePicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -245,89 +316,187 @@ fun BatchActionsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
                 text = "Ações para $selectedCount músicas",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = MyatoWhite,
-                modifier = Modifier.padding(bottom = 16.dp)
+                color = MyatoGreen,
+                modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            ListItem(
-                headlineContent = { Text("Reproduzir Agora", color = MyatoWhite) },
-                leadingContent = { Icon(Icons.Default.PlayArrow, null, tint = MyatoGreen) },
-                modifier = Modifier
-                    .testTag("action_play_selected")
-                    .clickable {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                // 1. Tocar músicas selecionadas
+                item {
+                    BatchActionItem("Tocar Músicas Selecionadas", Icons.Default.PlayArrow, MyatoGreen) {
                         onPlaySelected()
                         onDismiss()
-                    },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-
-            ListItem(
-                headlineContent = { Text("Adicionar à Fila", color = MyatoWhite) },
-                leadingContent = { Icon(Icons.Default.QueueMusic, null, tint = MyatoGreen) },
-                modifier = Modifier
-                    .testTag("action_queue_selected")
-                    .clickable {
-                        onAddToQueue()
+                    }
+                }
+                // 2. Colocar em ordem aleatória e tocar
+                item {
+                    BatchActionItem("Ordem Aleatória e Tocar", Icons.Default.Shuffle, MyatoGreen) {
+                        onShufflePlaySelected()
                         onDismiss()
-                    },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-
-            ListItem(
-                headlineContent = { Text("Adicionar a uma Playlist Existente", color = MyatoWhite) },
-                leadingContent = { Icon(Icons.Default.PlaylistAdd, null, tint = MyatoGreen) },
-                modifier = Modifier
-                    .testTag("action_playlist_selected")
-                    .clickable {
+                    }
+                }
+                // 3. Tocar depois da música atual
+                item {
+                    BatchActionItem("Tocar Depois da Atual", Icons.Default.SkipNext, MyatoGreen) {
+                        onPlayNext()
+                        onDismiss()
+                    }
+                }
+                // 4. Adicionar à fila que está tocando agora
+                item {
+                    BatchActionItem("Adicionar à Fila Atual", Icons.Default.QueueMusic, MyatoGreen) {
+                        onAddToCurrentQueue()
+                        onDismiss()
+                    }
+                }
+                // 5. Adicionar a uma fila específica
+                item {
+                    BatchActionItem("Adicionar a uma Fila Específica (1..20)", Icons.Default.Layers, MyatoGreen) {
+                        showQueuePicker = true
+                    }
+                }
+                // 6. Remover dessa fila
+                item {
+                    BatchActionItem("Remover da Fila", Icons.Default.DeleteSweep, MyatoError) {
+                        onRemoveFromQueue()
+                        onDismiss()
+                    }
+                }
+                // 7. Adicionar às playlists
+                item {
+                    BatchActionItem("Adicionar às Playlists", Icons.Default.PlaylistAdd, MyatoWhite) {
                         onAddToPlaylist()
                         onDismiss()
-                    },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-
-            ListItem(
-                headlineContent = { Text("Criar Nova Playlist com a Seleção", color = MyatoWhite) },
-                leadingContent = { Icon(Icons.Default.Add, null, tint = MyatoGreen) },
-                modifier = Modifier
-                    .testTag("action_new_playlist_selected")
-                    .clickable {
-                        onCreatePlaylist()
-                        onDismiss()
-                    },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-
-            ListItem(
-                headlineContent = { Text("Adicionar às Favoritas", color = MyatoWhite) },
-                leadingContent = { Icon(Icons.Default.Favorite, null, tint = MyatoGreen) },
-                modifier = Modifier
-                    .testTag("action_fav_selected")
-                    .clickable {
+                    }
+                }
+                // 8. Adicionar às favoritas
+                item {
+                    BatchActionItem("Adicionar às Favoritas", Icons.Default.Favorite, MyatoGreen) {
                         onFavoriteAll()
                         onDismiss()
-                    },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-
-            ListItem(
-                headlineContent = { Text("Excluir Selecionadas da Biblioteca", color = MyatoError) },
-                leadingContent = { Icon(Icons.Default.Delete, null, tint = MyatoError) },
-                modifier = Modifier
-                    .testTag("action_delete_selected")
-                    .clickable {
+                    }
+                }
+                // 9. Remover das favoritas
+                item {
+                    BatchActionItem("Remover das Favoritas", Icons.Default.FavoriteBorder, MyatoGrayLight) {
+                        onUnfavoriteAll()
+                        onDismiss()
+                    }
+                }
+                // 10. Editar tags
+                item {
+                    BatchActionItem("Editar Tags em Lote", Icons.Default.EditNote, MyatoWhite) {
+                        onBatchEditTags()
+                        onDismiss()
+                    }
+                }
+                // 11. Mover para uma pasta
+                item {
+                    BatchActionItem("Mover para uma Pasta", Icons.Default.DriveFileMove, MyatoWhite) {
+                        onMoveToFolder()
+                        onDismiss()
+                    }
+                }
+                // 12. Copiar para uma pasta
+                item {
+                    BatchActionItem("Copiar para uma Pasta", Icons.Default.ContentCopy, MyatoWhite) {
+                        onCopyToFolder()
+                        onDismiss()
+                    }
+                }
+                // 13. Velocidade e tom
+                item {
+                    BatchActionItem("Velocidade e Tom de Reprodução", Icons.Default.Speed, MyatoWhite) {
+                        onSpeedPitch()
+                        onDismiss()
+                    }
+                }
+                // 14. Compartilhar
+                item {
+                    BatchActionItem("Compartilhar", Icons.Default.Share, MyatoWhite) {
+                        onShare()
+                        onDismiss()
+                    }
+                }
+                // 15. Limpar histórico de reprodução
+                item {
+                    BatchActionItem("Limpar do Histórico", Icons.Default.History, MyatoWhite) {
+                        onClearHistory()
+                        onDismiss()
+                    }
+                }
+                // 16. Apagar permanentemente
+                item {
+                    BatchActionItem("Apagar Permanentemente (Excluir Arquivos)", Icons.Default.DeleteForever, MyatoError) {
                         onDeleteSelected()
                         onDismiss()
-                    },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
+                    }
+                }
+            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
+
+    if (showQueuePicker) {
+        AlertDialog(
+            onDismissRequest = { showQueuePicker = false },
+            containerColor = MyatoCard,
+            title = { Text("Escolha a fila de destino", color = MyatoWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
+                    items(queues.size) { idx ->
+                        val q = queues[idx]
+                        ListItem(
+                            headlineContent = { Text(q.name, color = MyatoWhite) },
+                            supportingContent = { Text("${q.songs.size} faixas", color = MyatoGrayMedium) },
+                            leadingContent = { Icon(Icons.Default.QueueMusic, null, tint = MyatoGreen) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onAddToSpecificQueue(q.id)
+                                    showQueuePicker = false
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = MyatoCard)
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showQueuePicker = false }) {
+                    Text("Cancelar", color = MyatoGrayLight)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun BatchActionItem(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    ListItem(
+        headlineContent = { Text(title, color = MyatoWhite, fontSize = 14.sp) },
+        leadingContent = { Icon(icon, null, tint = tint) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
+    HorizontalDivider(color = MyatoBorder.copy(alpha = 0.5f))
 }
